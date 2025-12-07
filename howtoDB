@@ -1,0 +1,249 @@
+ได้ค่ะ ฉันจะสอนแบบ **ชัด ๆ เป็นภาพรวม** ว่าเวลาเขียน backend (โดยเฉพาะ Node.js + Prisma หรือ ORM อื่น)
+**เราจะอ้างถึง Database ยังไง**, ต้องตั้งชื่ออะไรบ้าง, โค้ดส่วนไหนเชื่อมกันอย่างไร
+เพื่อให้คุณเข้าใจ “flow” ของระบบทั้งหมดค่ะ
+
+ฉันจะสอนตามสเต็ปนี้:
+
+1. ภาพรวมการดึงข้อมูลจาก DB
+2. table → prisma schema → model name → ฟังก์ชันดึงข้อมูล
+3. ใช้ db ใน controller/service
+4. อธิบายชื่อที่ต้องให้ *ตรงกัน* ไม่งั้นเรียกไม่ได้
+5. ตัวอย่างเต็ม flow
+
+---
+
+# 🎯 1) หลักการสำคัญก่อน — การ “อ้างถึง DB” ทำงานแบบนี้
+
+ทุกครั้งที่เราดึงข้อมูลจาก DB มันมี flow แบบนี้:
+
+```
+Route → Controller → Service → Repository → DB
+```
+
+โดย **Repository คือจุดที่แตะ database จริง**
+
+เช่นใน Prisma:
+
+```js
+db.course.findUnique()
+db.student.findMany()
+db.enroll.create()
+```
+
+`course`, `student`, `enroll` = **ชื่อ model ใน schema.prisma**
+
+ถ้า schema ตั้งชื่อแบบไหน คุณต้องเรียกใช้ชื่อนั้น **เป๊ะ 100%**
+
+---
+
+# 🎯 2) ชื่อที่ “ต้องตรงกัน” เพื่อดึงข้อมูลจาก DB
+
+## 2.1 ตอนสร้าง model ต้องกำชื่อ model:
+
+### 📌 schema.prisma
+
+```prisma
+model Course {
+  id      Int     @id @default(autoincrement())
+  name    String
+  credit  Int
+}
+```
+
+สิ่งสำคัญคือ:
+→ ชื่อตรงนี้ **Course** คือ model name
+→ Prisma จะสร้าง object ชื่อ **db.course**
+
+สังเกตว่า:
+
+* model ชื่อ `Course` → object เวลาใช้คือ **course** (ตัวเล็ก)
+
+---
+
+# 🎯 3) เวลาเรียกใน Repository
+
+### 📌 course-repository.js
+
+```js
+async function findCourseById(db, id) {
+  return await db.course.findUnique({
+    where: { id }
+  });
+}
+```
+
+ดูสามจุดสำคัญ:
+
+1. **db.course**
+
+   * `course` มาจาก model `Course` ใน schema
+   * Prisma แปลงเป็น lowercase
+
+2. **findUnique**
+
+   * ใช้ดึงข้อมูลโดยอ้าง unique key เช่น id
+
+3. **where: { id }**
+
+   * ต้องมี field ในนั้นตรงกับ schema เช่น field id เป็นชื่อเดียวกัน
+
+ถ้า schema ใช้ชื่อ `courseId`
+คุณต้องเขียน:
+
+```js
+where: { courseId: id }
+```
+
+**ชื่อไม่ตรง → error ทันที**
+
+---
+
+# 🎯 4) แล้ว db มาจากไหน? ทำไม req.db ถึงใช้ได้?
+
+คุณต้อง inject db ลงใน request เช่นใน app.js
+
+### 📌 app.js
+
+```js
+const db = require("./prismaClient");
+
+app.use((req, res, next) => {
+  req.db = db;
+  next();
+});
+```
+
+ใน controller เราจึงใช้:
+
+```js
+req.db.course.findMany()
+```
+
+เพราะเราผูก db ให้ req แล้ว
+
+---
+
+# 🎯 5) Flow จริงแบบเต็ม
+
+## 5.1 schema.prisma
+
+(กำหนด model)
+
+```prisma
+model Course {
+  id      Int     @id @default(autoincrement())
+  name    String
+  credit  Int
+}
+```
+
+---
+
+## 5.2 Repository — ดึงข้อมูลจาก DB
+
+```js
+async function getAllCourses(db) {
+  return await db.course.findMany();
+}
+
+module.exports = { getAllCourses };
+```
+
+---
+
+## 5.3 Service — เรียก repository
+
+```js
+const repo = require("../repositories/course-repository");
+
+async function getAllCoursesService(db) {
+  return await repo.getAllCourses(db);
+}
+
+module.exports = { getAllCoursesService };
+```
+
+---
+
+## 5.4 Controller — รับ request + ส่ง response
+
+```js
+const service = require("../services/course-service");
+
+async function getAllCourses(req, res) {
+  try {
+    const data = await service.getAllCoursesService(req.db);
+    res.json(data);
+
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+}
+
+module.exports = { getAllCourses };
+```
+
+---
+
+## 5.5 Route — map URL → controller
+
+```js
+router.get("/", controller.getAllCourses);
+```
+
+---
+
+## 5.6 app.js
+
+```js
+app.use("/courses", courseRoutes);
+```
+
+---
+
+# 🎯 6) ประโยคสั้น ๆ ที่ต้องจำให้ได้ (ออกสอบแน่นอน)
+
+### ✔ schema.prisma → สร้าง model
+
+```
+model Course { ... }
+```
+
+### ✔ Prisma แปลง model name เป็น object
+
+```
+Course → db.course
+Student → db.student
+Enroll → db.enroll
+```
+
+### ✔ repository ใช้ฟังก์ชัน prisma
+
+```
+db.course.findMany()
+db.course.findUnique()
+db.course.create()
+db.course.update()
+db.course.delete()
+```
+
+### ✔ route → controller → service → repository → DB
+
+---
+
+# 🎯 7) ทดลองออกแบบของคุณเองได้
+
+คุณแค่บอกว่า:
+
+> “ฉันอยากลองสร้าง CRUD ของ table XYZ ช่วยทำ flow เต็มให้หน่อย”
+
+ฉันจะให้ครบทุกไฟล์
+โดยไม่ละเมิดกฎสอบ (ไม่เขียนทั้งไฟล์)
+
+---
+
+# 😊 ถ้าอยากให้ฉันอธิบายแบบ “เห็นภาพมากที่สุด”
+
+ฉันสามารถวาด diagram flow ให้ได้ด้วยนะคะ
+
+ต้องการไหมคะ?

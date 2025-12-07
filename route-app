@@ -1,0 +1,340 @@
+ได้เลยค่ะ! ❤️
+ฉันจะให้คุณ **สูตรลัดทั้งหมด** ที่จำเป็นสำหรับสอบ INT161 แบบครบชุด
+**ตั้งแต่ Route → Controller → Service → Repository → App.js → Prisma Model → Validation → Error Handling → Login → Role**
+
+ทั้งหมดนี้คือ “**ชุดสูตรลัดสอบผ่าน**”
+อ่านชุดเดียว → เขียน API ได้ครบทั้ง CRUD + Auth
+
+---
+
+# ⭐⭐⭐ สำหรับสะดวก ฉันแบ่งเป็น **11 หมวดใหญ่** พร้อม **สูตรลัดจำง่ายใน 1 บรรทัด** ⭐⭐⭐
+
+---
+
+# 1) **สูตรลัด Route (ตัวเชื่อม URL → Controller)**
+
+### โครง Route มาตรฐาน
+
+```js
+const express = require("express");
+const router = express.Router();
+const controller = require("../controllers/studentController");
+
+router.get("/", controller.getAll);
+router.get("/:id", controller.getOne);
+router.post("/", controller.create);
+router.put("/:id", controller.update);
+router.delete("/:id", controller.remove);
+
+module.exports = router;
+```
+
+### สูตรลัดจำง่าย
+
+```
+Route = method + path + controller.method
+```
+
+---
+
+# 2) **สูตรลัด Controller (มี try/catch)**
+
+### โครง Controller มาตรฐาน
+
+```js
+async create(req, res) {
+  try {
+    const data = await service.create(req.db, req.body);
+    res.status(201).json(data);
+  } catch (err) {
+    res.status(err.status ?? 500).json({ error: err.message });
+  }
+}
+```
+
+### สูตรลัดจำง่าย
+
+```
+Controller = try(เรียก service) + catch(ส่ง error)
+```
+
+---
+
+# 3) **สูตรลัด Service (Validation + Logic + Repository)**
+
+### โครง Service มาตรฐาน
+
+```js
+async update(db, id, body) {
+  if (!id) throw { status: 400, message: "ID required" };
+
+  const exists = await repo.findById(db, Number(id));
+  if (!exists) throw { status: 404, message: "not found" };
+
+  if (body.email && !body.email.includes("@"))
+    throw { status: 400, message: "invalid email" };
+
+  return await repo.update(db, Number(id), body);
+}
+```
+
+### สูตรลัดจำง่าย
+
+```
+Service = Validate → Check Exists → Repository
+```
+
+---
+
+# 4) **สูตรลัด Repository (คุยกับ DB)**
+
+### โครง Repository มาตรฐาน
+
+```js
+async update(db, id, data) {
+  return await db.student.update({
+    where: { id },
+    data
+  });
+}
+```
+
+### สูตรลัดจำง่าย
+
+```
+Repository = Prisma ORM commands
+```
+
+---
+
+# 5) **สูตรลัด App.js (สำคัญมาก)**
+
+### โครง app.js ที่ต้องเขียนเป็น
+
+```js
+const express = require("express");
+const app = express();
+const db = require("./prismaClient");
+const studentRoutes = require("./routes/studentRoutes");
+
+app.use(express.json());
+
+app.use((req, res, next) => {
+  req.db = db;
+  next();
+});
+
+app.use("/students", studentRoutes);
+
+app.listen(3000, () => console.log("Server running"));
+```
+
+### สูตรลัดจำง่าย
+
+```
+App.js = express + json + req.db + routes
+```
+
+---
+
+# 6) **สูตรลัด Prisma Schema (Model)**
+
+### โครง Prisma Model มาตรฐาน
+
+```prisma
+model Student {
+  id        Int      @id @default(autoincrement())
+  fullname  String
+  age       Int
+  email     String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+```
+
+### สูตรลัดจำง่าย
+
+```
+id Int @id @default(autoincrement()) + fields
+```
+
+---
+
+# 7) **สูตรลัด Validation (ออกสอบแน่นอน)**
+
+### โครง Validation
+
+```js
+if (!body.fullname)
+  throw { status: 400, message: "fullname required" };
+
+if (body.age < 15)
+  throw { status: 400, message: "age must be >= 15" };
+
+if (!body.email.includes("@"))
+  throw { status: 400, message: "invalid email" };
+```
+
+### สูตรลัดจำง่าย
+
+```
+Validation = if (ไม่ถูกต้อง) throw {status:400,message:"..."}
+```
+
+---
+
+# 8) **สูตรลัด Error Handling**
+
+### โครง Error Handling ครบสูตร
+
+```js
+catch (err) {
+  res.status(err.status ?? 500).json({ error: err.message });
+}
+```
+
+### สูตรลัดจำง่าย
+
+```
+err.status ?? 500
+```
+
+---
+
+# 9) **สูตรลัด Login (Authentication)**
+
+ใช้ **JWT** (ข้อสอบออกบ่อยมาก)
+
+### Controller (Login)
+
+```js
+async login(req, res) {
+  try {
+    const token = await authService.login(req.db, req.body);
+    res.json({ token });
+  } catch (err) {
+    res.status(err.status ?? 500).json({ error: err.message });
+  }
+}
+```
+
+### Service (Login)
+
+```js
+async login(db, body) {
+  const user = await db.user.findUnique({ where: { email: body.email } });
+  if (!user) throw { status: 401, message: "invalid credentials" };
+
+  if (user.password !== body.password)
+    throw { status: 401, message: "invalid credentials" };
+
+  return jwt.sign({ id: user.id, role: user.role }, "secret", { expiresIn: "1h" });
+}
+```
+
+### สูตรลัดจำง่าย
+
+```
+Login = verify user → compare password → sign token
+```
+
+---
+
+# 10) **สูตรลัด Middleware ตรวจ Token (JWT Middleware)**
+
+```js
+function auth(req, res, next) {
+  try {
+    const token = req.headers.authorization?.split(" ")[1];
+    if (!token) throw { status: 401, message: "no token" };
+
+    const decoded = jwt.verify(token, "secret");
+    req.user = decoded;
+    next();
+  } catch {
+    res.status(401).json({ error: "invalid token" });
+  }
+}
+```
+
+### สูตรลัดจำง่าย
+
+```
+Authorization: Bearer <token> → verify → req.user
+```
+
+---
+
+# 11) **สูตรลัด Authorization (Role Check)**
+
+```js
+function role(requiredRole) {
+  return (req, res, next) => {
+    if (req.user.role !== requiredRole)
+      return res.status(403).json({ error: "forbidden" });
+
+    next();
+  };
+}
+```
+
+### สูตรลัดจำง่าย
+
+```
+ถ้า req.user.role != required → 403
+```
+
+---
+
+# 🎉 สรุปสุดท้าย: “สูตรลัดเต็มระบบ”
+
+## 📌 CRUD
+
+* POST → body → 201
+* GET → params/body → 200
+* PUT → params + body → 200
+* DELETE → params → 200
+
+## 📌 Error
+
+* 400 = validation
+* 404 = not found
+* 500 = default
+
+## 📌 Layer
+
+```
+Route → Controller → Service → Repository → Prisma → DB
+```
+
+## 📌 Validation
+
+```
+if(ไม่ถูกต้อง) throw {status:400,message:"..."}
+```
+
+## 📌 Prisma ORM
+
+```
+create, findMany, findUnique, update, delete
+```
+
+## 📌 Auth
+
+```
+Login = findUser → checkPass → sign token
+```
+
+## 📌 Middleware
+
+```
+Authorization = verify token
+Role = check req.user.role
+```
+
+---
+
+# ถ้าคุณอยาก ฉันสรุปทั้งหมดเป็น
+
+📌 “ชีท 1 หน้า PDF สอบพรุ่งนี้”
+ให้คุณโหลดไปอ่านได้เลย ❤️

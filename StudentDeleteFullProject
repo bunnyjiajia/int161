@@ -1,0 +1,127 @@
+// =============================================================
+// Project: Student Delete API (DELETE /students/:id)
+// Features:
+//   - CRUD Delete
+//   - Exists Checking (404)
+//   - Validation (id required)
+//   - Error Handling
+//   - Repository–Service–Controller Pattern
+// Structure:
+//   prisma/schema.prisma
+//   src/prismaClient.js
+//   src/repositories/studentRepository.js
+//   src/services/studentService.js
+//   src/controllers/studentController.js
+//   src/routes/studentRoutes.js
+//   src/app.js
+// =============================================================
+
+
+// ============================
+// FILE: prisma/schema.prisma
+// ============================
+// datasource db {
+//   provider = "sqlite"
+//   url      = "file:./dev.db"
+// }
+
+// generator client {
+//   provider = "prisma-client-js"
+// }
+
+// model Student {
+//   id        Int      @id @default(autoincrement())
+//   fullname  String
+//   age       Int
+//   email     String
+//   createdAt DateTime @default(now())
+//   updatedAt DateTime @updatedAt
+// }
+
+
+// ============================
+// FILE: src/prismaClient.js
+// ============================
+const { PrismaClient } = require('@prisma/client');
+const prisma = new PrismaClient();
+module.exports = prisma;
+
+
+// ==========================================
+// FILE: src/repositories/studentRepository.js
+// ==========================================
+module.exports = {
+  async findStudentById(db, id) {
+    return await db.student.findUnique({ where: { id } });
+  },
+
+  async deleteStudent(db, id) {
+    return await db.student.delete({ where: { id } });
+  }
+};
+
+
+// ======================================
+// FILE: src/services/studentService.js
+// ======================================
+const repo = require('../repositories/studentRepository');
+
+module.exports = {
+  async deleteStudentService(db, id) {
+    if (!id) throw { status: 400, message: "ID required" };
+
+    const exists = await repo.findStudentById(db, Number(id));
+    if (!exists) throw { status: 404, message: "Student not found" };
+
+    return await repo.deleteStudent(db, Number(id));
+  }
+};
+
+
+// ===========================================
+// FILE: src/controllers/studentController.js
+// ===========================================
+const service = require('../services/studentService');
+
+module.exports = {
+  async deleteStudent(req, res) {
+    try {
+      await service.deleteStudentService(req.db, req.params.id);
+      res.json({ message: "Student deleted" });
+    } catch (err) {
+      res.status(err.status ?? 500).json({ error: err.message });
+    }
+  }
+};
+
+
+// ===================================
+// FILE: src/routes/studentRoutes.js
+// ===================================
+const express = require('express');
+const router = express.Router();
+const controller = require('../controllers/studentController');
+
+router.delete('/:id', controller.deleteStudent);
+
+module.exports = router;
+
+
+// ========================
+// FILE: src/app.js
+// ========================
+const express = require('express');
+const app = express();
+const db = require('./prismaClient');
+const studentRoutes = require('./routes/studentRoutes');
+
+app.use(express.json());
+
+app.use((req, res, next) => {
+  req.db = db;
+  next();
+});
+
+app.use('/students', studentRoutes);
+
+app.listen(3000, () => console.log("DELETE Server running at http://localhost:3000"));

@@ -1,0 +1,136 @@
+// =============================================================
+// Project: Student GET API (Read All + Read By ID)
+// Structure:
+//   prisma/schema.prisma
+//   src/prismaClient.js
+//   src/repositories/studentRepository.js
+//   src/services/studentService.js
+//   src/controllers/studentController.js
+//   src/routes/studentRoutes.js
+//   src/app.js
+// =============================================================
+
+
+// ============================
+// FILE: prisma/schema.prisma
+// ============================
+datasource db {
+  provider = "sqlite"
+  url      = "file:./dev.db"
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+model Student {
+  id        Int      @id @default(autoincrement())
+  fullname  String
+  age       Int
+  email     String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+
+// ============================
+// FILE: src/prismaClient.js
+// ============================
+const { PrismaClient } = require('@prisma/client');
+const prisma = new PrismaClient();
+module.exports = prisma;
+
+
+// ==========================================
+// FILE: src/repositories/studentRepository.js
+// ==========================================
+module.exports = {
+  async getAllStudents(db) {
+    return await db.student.findMany();
+  },
+
+  async getStudentById(db, id) {
+    return await db.student.findUnique({ where: { id } });
+  }
+};
+
+
+// ======================================
+// FILE: src/services/studentService.js
+// ======================================
+const repo = require('../repositories/studentRepository');
+
+module.exports = {
+  async getAllStudentsService(db) {
+    return await repo.getAllStudents(db);
+  },
+
+  async getStudentByIdService(db, id) {
+    if (!id) throw { status: 400, message: "ID required" };
+
+    const student = await repo.getStudentById(db, Number(id));
+
+    if (!student) throw { status: 404, message: "Student not found" };
+
+    return student;
+  }
+};
+
+
+// ===========================================
+// FILE: src/controllers/studentController.js
+// ===========================================
+const service = require('../services/studentService');
+
+module.exports = {
+  async getAllStudents(req, res) {
+    try {
+      const data = await service.getAllStudentsService(req.db);
+      res.json(data);
+    } catch (err) {
+      res.status(500).json({ error: err.message });
+    }
+  },
+
+  async getStudentById(req, res) {
+    try {
+      const data = await service.getStudentByIdService(req.db, req.params.id);
+      res.json(data);
+    } catch (err) {
+      res.status(err.status ?? 500).json({ error: err.message });
+    }
+  }
+};
+
+
+// ===================================
+// FILE: src/routes/studentRoutes.js
+// ===================================
+const express = require('express');
+const router = express.Router();
+const controller = require('../controllers/studentController');
+
+router.get('/', controller.getAllStudents);
+router.get('/:id', controller.getStudentById);
+
+module.exports = router;
+
+
+// ========================
+// FILE: src/app.js
+// ========================
+const express = require('express');
+const app = express();
+const db = require('./prismaClient');
+const studentRoutes = require('./routes/studentRoutes');
+
+app.use(express.json());
+
+app.use((req, res, next) => {
+  req.db = db;
+  next();
+});
+
+app.use('/students', studentRoutes);
+
+app.listen(3000, () => console.log("GET Server running at http://localhost:3000"));

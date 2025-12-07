@@ -1,0 +1,316 @@
+// Project Structure (Express + Prisma)
+// ===============================
+// This canvas contains ALL files in one place for Postman testing.
+// Copy them into your own project folder.
+//
+// /prisma/schema.prisma
+// /src/app.js
+// /src/prismaClient.js
+// /src/routes/courseRoutes.js
+// /src/controllers/courseController.js
+// /src/services/courseService.js
+// /src/repositories/courseRepository.js
+//
+// Run:
+//   npm install express @prisma/client prisma
+//   npx prisma init
+//   npx prisma migrate dev --name init
+//   node src/app.js
+
+
+
+// ========================================
+// FILE: prisma/schema.prisma
+// ========================================
+// Adjust datasource provider as needed
+// (mysql, postgresql, sqlite, etc.)
+
+datasource db {
+  provider = "sqlite"
+  url      = "file:./dev.db"
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+model Course {
+  id        Int      @id @default(autoincrement())
+  name      String
+  credit    Int      @default(3)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+
+
+// ========================================
+// FILE: src/prismaClient.js
+// ========================================
+const { PrismaClient } = require('@prisma/client');
+const prisma = new PrismaClient();
+module.exports = prisma;
+
+
+
+// ========================================
+// FILE: src/repositories/courseRepository.js
+// ========================================
+module.exports = {
+  async findCourseById(db, id) {
+    return await db.course.findUnique({ where: { id } });
+  },
+
+  async createCourse(db, data) {
+    return await db.course.create({ data });
+  },
+
+  async updateCourse(db, id, data) {
+    return await db.course.update({ where: { id }, data });
+  },
+
+  async deleteCourse(db, id) {
+    return await db.course.delete({ where: { id } });
+  },
+
+  async getAllCourses(db) {
+    return await db.course.findMany();
+  }
+};
+
+
+
+// ========================================
+// FILE: src/services/courseService.js
+// ========================================
+const repo = require('../repositories/courseRepository');
+
+module.exports = {
+  async createCourseService(db, body) {
+    if (!body.name || body.name.trim() === '') {
+      throw { status: 400, message: "Course name required" };
+    }
+
+    return await repo.createCourse(db, {
+      name: body.name,
+      credit: body.credit ?? 3
+    });
+  },
+
+  async getCourseService(db, id) {
+    if (!id) throw { status: 400, message: "ID required" };
+
+    const course = await repo.findCourseById(db, Number(id));
+    if (!course) throw { status: 404, message: "Course not found" };
+
+    return course;
+  },
+
+  async getAllCoursesService(db) {
+    return await repo.getAllCourses(db);
+  },
+
+  async updateCourseService(db, id, body) {
+    const exists = await repo.findCourseById(db, Number(id));
+    if (!exists) throw { status: 404, message: "Course not found" };
+
+    return await repo.updateCourse(db, Number(id), body);
+  },
+
+  async deleteCourseService(db, id) {
+    const exists = await repo.findCourseById(db, Number(id));
+    if (!exists) throw { status: 404, message: "Course not found" };
+
+    return await repo.deleteCourse(db, Number(id));
+  }
+};
+
+
+
+// ========================================
+// FILE: src/controllers/courseController.js
+// ========================================
+const service = require('../services/courseService');
+
+module.exports = {
+  async createCourse(req, res) {
+    try {
+      const data = await service.createCourseService(req.db, req.body);
+      res.status(201).json(data);
+    } catch (err) {
+      res.status(err.status ?? 500).json({ error: err.message });
+    }
+  },
+
+  async getCourse(req, res) {
+    try {
+      const data = await service.getCourseService(req.db, req.params.id);
+      res.json(data);
+    } catch (err) {
+      res.status(err.status ?? 500).json({ error: err.message });
+    }
+  },
+
+  async getAllCourses(req, res) {
+    try {
+      const data = await service.getAllCoursesService(req.db);
+      res.json(data);
+    } catch (err) {
+      res.status(500).json({ error: err.message });
+    }
+  },
+
+  async updateCourse(req, res) {
+    try {
+      const data = await service.updateCourseService(req.db, req.params.id, req.body);
+      res.json(data);
+    } catch (err) {
+      res.status(err.status ?? 500).json({ error: err.message });
+    }
+  },
+
+  async deleteCourse(req, res) {
+    try {
+      await service.deleteCourseService(req.db, req.params.id);
+      res.json({ message: "Deleted" });
+    } catch (err) {
+      res.status(err.status ?? 500).json({ error: err.message });
+    }
+  }
+};
+
+
+
+// ========================================
+// FILE: src/routes/courseRoutes.js
+// ========================================
+const express = require('express');
+const router = express.Router();
+const controller = require('../controllers/courseController');
+
+router.post('/', controller.createCourse);
+router.get('/', controller.getAllCourses);
+router.get('/:id', controller.getCourse);
+router.put('/:id', controller.updateCourse);
+router.delete('/:id', controller.deleteCourse);
+
+module.exports = router;
+
+
+
+// ========================================
+// FILE: src/app.js
+// ========================================
+const express = require('express');
+const app = express();
+const db = require('./prismaClient');
+const courseRoutes = require('./routes/courseRoutes');
+
+app.use(express.json());
+
+// attach db to req
+app.use((req, res, next) => {
+  req.db = db;
+  next();
+});
+
+app.use('/courses', courseRoutes);
+
+app.listen(3000, () => console.log("Server running on http://localhost:3000"));
+
+
+
+
+
+
+-----------------------------------------------------
+🎯 ชื่อนิยามของโจทย์นี้ (แบบสั้น)
+👉 “สร้างระบบ Course Management แบบ CRUD เต็มรูปแบบ โดยใช้ Express + Prisma พร้อมแยก Repository / Service / Controller”
+🎯 ชื่อนิยามของโจทย์นี้ (แบบสอบ)
+👉 “Develop RESTful API for Course resource with full CRUD operations using Node.js, Express, Prisma ORM, and layered architecture (Repository–Service–Controller).”
+🎯 โจทย์นี้เป็นเรื่องของอะไร?
+
+ฉันสรุปให้เป็นหัวข้อให้เลยค่ะ:
+
+✓ 1) CRUD Operations
+
+Create
+
+Read (getAll + getById)
+
+Update
+
+Delete
+
+นี่คือเนื้อหาเบื้องต้นที่สอบปฏิบัติงานจริงต้องทำได้
+
+✓ 2) RESTful API Design
+
+ใช้ HTTP method ให้ถูก เช่น POST, GET, PUT, DELETE
+
+ใช้ URL /courses, /courses/:id
+
+นี่คือเนื้อหามาตรฐานในการวัดความเข้าใจ API
+
+✓ 3) Repository–Service–Controller Pattern
+
+อันนี้แพทเทิร์นคลาสสิกของ INT161:
+
+Repository = ติดต่อฐานข้อมูลจริง
+
+Service = business logic, validation
+
+Controller = รับ request/response
+
+Route = map URL → controller
+
+อาจารย์นิยมมากๆ เพราะมันแสดงความ “เขียนโค้ดเป็นระบบ” ไม่มั่วทุกอย่างในไฟล์เดียว
+
+✓ 4) Error Handling + Input Validation
+
+เช่น:
+
+ถ้าไม่ส่ง name → 400 Bad Request
+
+ถ้าหา course ไม่เจอ → 404 Not Found
+
+try/catch ใน controller
+
+นี่ตรงกับเนื้อหาทฤษฎีของคุณ:
+Error Handling, Input Validation
+
+✓ 5) Database Integration (Prisma ORM)
+
+ใช้ Prisma เพื่อติดต่อ DB จริง เช่น:
+
+.findMany()
+
+.findUnique()
+
+.create()
+
+.update()
+
+.delete()
+
+ตรงกับหัวข้อ:
+“ทำระบบ CRUD เชื่อมฐานข้อมูล” ซึ่งคือสาระสำคัญของสอบภาคปฏิบัติ
+
+✓ 6) Postman Testing
+
+โจทย์ประเภทนี้ออกเพื่อให้เทส API ได้จริง เช่น
+
+GET
+
+POST
+
+PUT
+
+DELETE
+
+🎉 สรุปสุดท้าย
+
+โจทย์นี้ = “ระบบจัดการคอร์สด้วย Express + Prisma ทำ CRUD ครบทุกตัว พร้อม error handling และแยก layer แบบมาตรฐาน”
+
+นี่คือ หนึ่งในโจทย์ที่ออกสอบบ่อยที่สุด ในภาคปฏิบัติ INT161/เว็บ Backend
+(เพราะมันรวมทุกเนื้อหาสำคัญในบทหลังทั้งหมด)

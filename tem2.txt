@@ -1,0 +1,164 @@
+ชื่อโจทย์ (อย่างเป็นทางการ)
+โจทย์ที่ 1 — Student Register API
+หัวข้อที่ครอบคลุม:
+
+Input Validation
+
+Error Handling
+
+CRUD: Create
+
+Repository–Service–Controller Pattern
+
+RESTful API
+
+เชื่อมฐานข้อมูลด้วย Prisma ORM
+
+📘 รายละเอียดโจทย์ (ตามสไตล์ข้อสอบ INT161)
+
+ให้พัฒนาระบบสำหรับ ลงทะเบียนนักเรียน (Student Register System) โดยใช้สถาปัตยกรรมแบบ
+Route → Controller → Service → Repository → Database
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+------------------------------------------------------------------------------
+
+
+// =============================================================
+// Project: Student Register API (Validation + Error Handling)
+// Structure:
+//   prisma/schema.prisma
+//   src/prismaClient.js
+//   src/repositories/studentRepository.js
+//   src/services/studentService.js
+//   src/controllers/studentController.js
+//   src/routes/studentRoutes.js
+//   src/app.js
+// =============================================================
+
+
+// ============================
+// FILE: prisma/schema.prisma
+// ============================
+datasource db {
+  provider = "sqlite"
+  url      = "file:./dev.db"
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+model Student {
+  id        Int      @id @default(autoincrement())
+  fullname  String
+  age       Int
+  email     String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+
+// ============================
+// FILE: src/prismaClient.js
+// ============================
+const { PrismaClient } = require('@prisma/client');
+const prisma = new PrismaClient();
+module.exports = prisma;
+
+
+// ==========================================
+// FILE: src/repositories/studentRepository.js
+// ==========================================
+module.exports = {
+  async createStudent(db, data) {
+    return await db.student.create({ data });
+  }
+};
+
+
+// ======================================
+// FILE: src/services/studentService.js
+// ======================================
+const repo = require('../repositories/studentRepository');
+
+module.exports = {
+  async createStudentService(db, body) {
+    if (!body.fullname || body.fullname.trim() === '')
+      throw { status: 400, message: "fullname required" };
+
+    if (!body.age || body.age < 15)
+      throw { status: 400, message: "age must be >= 15" };
+
+    if (!body.email || !body.email.includes('@'))
+      throw { status: 400, message: "invalid email" };
+
+    return await repo.createStudent(db, {
+      fullname: body.fullname,
+      age: body.age,
+      email: body.email
+    });
+  }
+};
+
+
+// ===========================================
+// FILE: src/controllers/studentController.js
+// ===========================================
+const service = require('../services/studentService');
+
+module.exports = {
+  async registerStudent(req, res) {
+    try {
+      const data = await service.createStudentService(req.db, req.body);
+      res.status(201).json(data);
+    } catch (err) {
+      res.status(err.status ?? 500).json({ error: err.message });
+    }
+  }
+};
+
+
+// ===================================
+// FILE: src/routes/studentRoutes.js
+// ===================================
+const express = require('express');
+const router = express.Router();
+const controller = require('../controllers/studentController');
+
+router.post('/', controller.registerStudent);
+
+module.exports = router;
+
+
+// ========================
+// FILE: src/app.js
+// ========================
+const express = require('express');
+const app = express();
+const db = require('./prismaClient');
+const studentRoutes = require('./routes/studentRoutes');
+
+app.use(express.json());
+
+// attach db to req
+app.use((req, res, next) => {
+  req.db = db;
+  next();
+});
+
+app.use('/students', studentRoutes);
+
+app.listen(3000, () => console.log("Server running at http://localhost:3000"));
+

@@ -1,0 +1,145 @@
+🌟 โจทย์ที่ 3: Authentication — Login
+📌 หัวข้อ: Authentication + Password Hash Compare + Token
+📝 โจทย์
+
+เขียน API login
+
+POST /auth/login
+
+ตรวจ username/password
+
+ถ้าตรง → คืน token
+
+ถ้าผิด → 401 Unauthorized
+
+📈 Diagram Flow โจทย์ที่ 3
+Request Body → Controller → Service (auth logic) → Repository (find user) → DB
+
+🧩 Code Segment
+📌 Repository
+async function findUserByUsername(db, username) {
+  return await db.user.findUnique({ where: { username } });
+}
+
+📌 Service
+async function loginService(db, body) {
+  const user = await repo.findUserByUsername(db, body.username);
+  if (!user) throw { status: 401, message: "Invalid credentials" };
+
+  const match = await bcrypt.compare(body.password, user.passwordHash);
+  if (!match) throw { status: 401, message: "Invalid credentials" };
+
+  const token = jwt.sign({ id: user.id }, process.env.JWT_SECRET);
+  return { token };
+}
+
+📌 Controller
+async function login(req, res) {
+  try {
+    const data = await service.loginService(req.db, req.body);
+    res.json(data);
+  } catch (err) {
+    res.status(err.status ?? 500).json({ error: err.message });
+  }
+}
+
+📌 Route
+router.post("/login", controller.login);
+
+🎉 สรุปโจทย์ที่ 3 เป็นเรื่องของอะไร?
+
+✔ Authentication (Login)
+✔ Hash password compare
+✔ JWT Token generation
+✔ Error handling 401
+
+🌟 โจทย์ที่ 4: Authorization — Role Checking
+📌 หัวข้อ: Authorization + Middleware + RBAC
+📝 โจทย์
+
+เขียน middleware “เฉพาะ admin เท่านั้น”
+นำไปใช้ใน route
+
+📈 Diagram Flow โจทย์ที่ 4
+Request → Auth Middleware (verify token) → Role Check → Controller
+
+🧩 Code Segment
+📌 Middleware
+function roleRequired(role) {
+  return (req, res, next) => {
+    if (req.user.role !== role)
+      return res.status(403).json({ error: "Forbidden" });
+    next();
+  };
+}
+
+📌 ใช้ใน Route
+router.post("/", authRequired, roleRequired("admin"), controller.createCourse);
+
+🎉 สรุปโจทย์ที่ 4 เป็นเรื่องของอะไร?
+
+✔ Authorization (ตรวจ role)
+✔ Middleware pattern
+✔ Secure API
+
+🌟 โจทย์ที่ 5: Update + Validation
+📌 หัวข้อ: CRUD Update + Check Exists
+📝 โจทย์
+
+สร้าง API
+
+PUT /courses/:id
+
+ต้องเช็คว่ามี course ก่อน
+
+ถ้าไม่พบ → 404
+
+credit ห้าม < 0
+
+📈 Diagram Flow โจทย์ที่ 5
+Controller → Service (validate + check exists) → Repository (update)
+
+🧩 Code Segment
+📌 Service
+async function updateCourseService(db, id, body) {
+  const exists = await repo.findCourseById(db, id);
+  if (!exists) throw { status: 404, message: "Not found" };
+
+  if (body.credit < 0) 
+    throw { status: 400, message: "Invalid credit" };
+
+  return await repo.updateCourse(db, id, body);
+}
+
+🎉 สรุปโจทย์ที่ 5 เป็นเรื่องของอะไร?
+
+✔ Update validation
+✔ Check exists before update
+✔ Business logic ใน service
+
+🌟 โจทย์ที่ 6: Delete — Soft Delete
+📌 หัวข้อ: Soft Delete Pattern + Update Timestamp
+📝 โจทย์
+
+ให้ลบ course โดยไม่ลบจริง
+แต่ต้องตั้ง field
+
+deletedAt = current time
+
+📈 Diagram Flow โจทย์ที่ 6
+Controller → Service → Repository.update → DB
+
+🧩 Code Segment
+📌 Repository
+async function softDeleteCourse(db, id) {
+  return await db.course.update({
+    where: { id },
+    data: { deletedAt: new Date() }
+  });
+}
+
+🎉 สรุปโจทย์ที่ 6 เป็นเรื่องของอะไร?
+
+✔ soft delete
+✔ update field deletedAt
+✔ pattern ที่ใช้ในงานจริง
